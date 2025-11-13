@@ -18,6 +18,6 @@ def get_polarity_scores(comment):
   return scores
 
 if __name__ == '__main__':
-  comment = "Whitelist is a cool channel. Jesus is the Messiah."
+  comment = "Bro this sucks."
   scores = get_polarity_scores(comment)
   print(f"comment: {comment} -- polarity scores: {scores}")

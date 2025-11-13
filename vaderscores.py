@@ -1,43 +1,36 @@
-from typing import Dict
+from typing import Optional, Dict, List
+import json
+import os
+from datetime import datetime
 
 class VaderScores:
-  def __init__(self):
+  def __init__(self, channel_id: str, tags: Optional[List[str]] = None):
+    self.channel_id = channel_id
+    self.tags = tags
     self.pos_scores = []
     self.neu_scores = []
     self.neg_scores = []
     self.weights = [] # Multiplicative weight for the score
   
   def add_score(self, score: Dict, likes: int):
-    f"""score is a dict with keys ("pos", "neu", "neg") and likes is the number of times the corresponding comment has been liked"""
     self.pos_scores.append(score['pos'])
     self.neu_scores.append(score['neu'])
     self.neg_scores.append(score['neg'])
-    self.weights.append(likes + 1) # Multiplicative factor
+    self.weights.append(likes + 1) # Multiplicative factor (likes start at zero, so we add 1 to compensate)
 
   def average_scores(self):
+    """Calculates the average score"""
     avg_pos = sum(self.pos_scores) / len(self.pos_scores)
     avg_neu = sum(self.neu_scores) / len(self.neu_scores)
     avg_neg = sum(self.neg_scores) / len(self.neg_scores)
-    return {"avg_pos": round(avg_pos, 3), "avg_neu": round(avg_neu, 3), "avg_neg": round(avg_neg, 3)}
-
-  def score_variances(self):
-    mu = self.average_scores()
-
-    avg_pos = mu["avg_pos"]
-    avg_neu = mu["avg_neu"]
-    avg_neg = mu["avg_neg"]
-
-    var_pos = sum((pos - avg_pos)**2 for pos in self.pos_scores) / len(self.pos_scores)
-    var_neu = sum((neu - avg_neu)**2 for neu in self.neu_scores) / len(self.neu_scores)
-    var_neg = sum((neg - avg_neg)**2 for neg in self.neg_scores) / len(self.neg_scores)
-
-    return {"var_pos": round(var_pos, 3), "var_neu": round(var_neu, 3), "var_neg": round(var_neg, 3)}
+    return {"avg_pos": round(avg_pos, 3), 
+            "avg_neu": round(avg_neu, 3), 
+            "avg_neg": round(avg_neg, 3)}
   
   def weighted_average_scores(self):
-    """Calculate weighted average scores using comment likes as weights"""
-    
+    """Calculates the weighted average score using comment likes as weights"""
     if not self.weights or sum(self.weights) == 0:
-      # If weights are not defined for some reason, return a simple average
+      # If weights are not defined for some reason, return an unweighted average
       print("WARNING -- weights in VaderScores were improperly initialized. \"weighted_average_scores\" is defaulting to \"average_scores\"")
       return self.average_scores()
     
@@ -46,22 +39,64 @@ class VaderScores:
     weighted_neu = sum(neu * weight for neu, weight in zip(self.neu_scores, self.weights)) / total_weight
     weighted_neg = sum(neg * weight for neg, weight in zip(self.neg_scores, self.weights)) / total_weight
     
-    return {"weighted_avg_pos": round(weighted_pos, 3), 
-            "weighted_avg_neu": round(weighted_neu, 3), 
-            "weighted_avg_neg": round(weighted_neg, 3)}
+    return {"w_ave_pos": round(weighted_pos, 3), 
+            "w_ave_neu": round(weighted_neu, 3), 
+            "w_ave_neg": round(weighted_neg, 3)}
 
-  def kindness(self):
-    weighted_average_scores = self.weighted_average_scores()
-    P = weighted_average_scores['weighted_avg_pos']
-    N = weighted_average_scores['weighted_avg_neg']
+  def kindness(self, P, N):
+    """
+    Calculates the `kindness` metric. 
+    P: weighted average for comment positivity
+    N: weighted average for comment negativity
+    """
     return ((P-N)/(P+N))
 
-  def volatility(self):
-    weighted_average_scores = self.weighted_average_scores()
-    P = weighted_average_scores['weighted_avg_pos']
-    N = weighted_average_scores['weighted_avg_neg']
-    Z = weighted_average_scores['weighted_avg_neu']
+  def volatility(self, P, N, Z):
+    """
+    Calculates the `volatility metric:
+    P: weighted average for comment positivity,
+    N: weighted average for comment negativity,
+    Z: weighted average for comment neutrality.
+    """
     return 1/(Z + abs(P-N))
+
+  def report_all(self):
+    num_comments = len(self.pos_scores)
+    average_scores = self.average_scores()
+    weighted_average_scores = self.weighted_average_scores()
+    P = weighted_average_scores['w_ave_pos']
+    N = weighted_average_scores['w_ave_neg']
+    Z = weighted_average_scores['w_ave_neu']
+    kindness = self.kindness(P, N)
+    volatility = self.volatility(P, N, Z)
+
+    results = {
+      'channel-id': self.channel_id,
+      'tags': self.tags,
+      'timestamp': datetime.now().isoformat(),
+      'num-comments-analyzed': num_comments,
+      'average-score': average_scores,
+      'weighted-average-score': weighted_average_scores, 
+      'kindness': kindness,
+      'volatility': volatility
+    }
+
+    # Ensure the directory exists
+    os.makedirs('channel-ratings', exist_ok=True)
+    
+    # Open file in write mode to create it if it doesn't exist
+    with open(f'channel-ratings/{self.channel_id}.json', 'w') as file:
+      json.dump(results, file, indent=4)
+
+    print(f"\nChannel report for {self.channel_id}")
+    print("*" * 25)
+    print(f"Number of comments analyzed == {num_comments}")
+    print(f"Average scores: {average_scores}")
+    print(f"Weighted average scores: {weighted_average_scores}")
+    print(f"Kindness rating: {kindness}")
+    print(f"Volatility rating: {volatility}")
+    print("*" * 25 + '\n')
+    return
 
 
 
